@@ -19,6 +19,8 @@
     multi-branch rational approximators, followed by a refinement
     step using Halley's method.
 
+    ALSO : should take a look at /usr/include/boost/math/special_functions/detail/erf_inv.hpp
+
 */
 
 static const mpreal kOne (1, kBits);
