@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <mpreal.h>
+#include <boost/math/distributions/normal.hpp>
 using namespace mpfr;
 
 // Get us a 1024-bit quantile implementation
@@ -113,6 +114,8 @@ static void t0()
 static void t1()
 {
     static const int nbSamples = 20;
+    const boost::math::normal dist(0.0, 1.0);
+
     for(int i=0; i<=nbSamples; ++i) {
         double y0 = 1e-12;
         double y1 = 1.0 - y0;
@@ -126,6 +129,15 @@ static void t1()
             y,
             yp.toString().c_str(),
             err.toString().c_str()
+        );
+
+        double q = quantile(dist, y);
+        printf(
+            "  myq=%s\n"
+            "boost=%.40f\n"
+            "\n",
+            x.toString().c_str(),
+            q
         );
     }
     printf("\n");
