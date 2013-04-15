@@ -8,44 +8,10 @@
 #include <boost/math/distributions/normal.hpp>
 using namespace mpfr;
 
-// Get us a 1024-bit quantile implementation
-namespace Quantile1024 {
-    static const int kBits(1024);
+// Get us a 256-bit quantile implementation
+namespace MyQuantile {
+    static const int kBits(256);
     #include <quantile.h>
-}
-
-// Marsaglia polar method for the normal distribution
-static double normalSample(
-    RNG *rng
-)
-{
-    static double stashedValue;
-    static bool haveStashedValue = false;
-    if(haveStashedValue) {
-        haveStashedValue = false;
-        return stashedValue;
-    }
-
-    while(1) {
-        double x0  = 2.0*rng->sample() - 1.0; 
-        double y0  = 2.0*rng->sample() - 1.0;
-        double r2 = x0*x0 + y0*y0;
-        if(r2<=1.0) {
-            double scaleFactor = ::sqrt(-2.0*log(r2)/r2);
-            stashedValue = y0*scaleFactor;
-            haveStashedValue = true;
-            return x0*scaleFactor;
-        }
-    }
-}
-
-// Positive half of the normal distribution
-static double halfNormalSample(
-    RNG *rng
-)
-{
-    double x = normalSample(rng);
-    return fabs(x);
 }
 
 // Run a simulation of a half-normal distribution, count how many samples "fit"
@@ -55,10 +21,10 @@ static double sampleProportion(
     double nbSamples = 10 * 1000 * 1000
 )
 {
-    RNG rng;
     int count = 0;
+    HalfGaussRNG hgrng;
     for(int i=0; i<nbSamples; ++i) {
-        double x = variance * halfNormalSample(&rng);
+        double x = variance * hgrng.sample();
         count += (x<threshold ? 1 : 0);
     }
     return count / (double)nbSamples;
@@ -71,7 +37,7 @@ static double findVariance(
 )
 {
     double y = 0.5*(proportion + 1.0);
-    return threshold / Quantile1024::quantile(y).toDouble();
+    return threshold / MyQuantile::quantile(y).toDouble();
 }
 
 // Test if findVariance works
@@ -117,13 +83,17 @@ static void t1()
     const boost::math::normal dist(0.0, 1.0);
 
     for(int i=0; i<=nbSamples; ++i) {
+
+        double mu = i/(double)nbSamples;
+
         double y0 = 1e-12;
         double y1 = 1.0 - y0;
-        double mu = i/(double)nbSamples;
         double  y = y0 + mu*(y1 - y0);
-        mpreal  x =  Quantile1024::quantile(y);
-        mpreal yp =  Quantile1024::cdf(x);
+
+        mpreal  x =  MyQuantile::quantile(y);
+        mpreal yp =  MyQuantile::cdf(x);
         mpreal err =  fabs(yp - y);
+
         printf(
             "cdf(quantile(%.40f)) = %s    err= %s\n",
             y,
@@ -133,11 +103,15 @@ static void t1()
 
         double q = quantile(dist, y);
         printf(
-            "  myq=%s\n"
-            "boost=%.40f\n"
+            "       myq = %s\n"
+            "     boost = %.40f\n"
+            "  cdf(myq) = %s\n"
+            "cdf(boost) = %s\n"
             "\n",
             x.toString().c_str(),
-            q
+            q,
+            MyQuantile::cdf(x).toString().c_str(),
+            MyQuantile::cdf(q).toString().c_str()
         );
     }
     printf("\n");

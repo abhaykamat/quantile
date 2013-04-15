@@ -1,16 +1,22 @@
 #ifndef __RNG_H__
     #define __RNG_H__
 
-    #include <stddef.h>
+    #include <math.h>
+    #include <stdint.h>
     #include <stdint.h>
 
     struct RNG
     {
+        virtual void reset(uint32_t seed) = 0;
+        virtual double sample() = 0;
+    };
+
+    struct UniformRNG: public RNG
+    {
     private:
 
-        enum { N = 624 };
-
         int32_t  state;
+        enum { N = 624 };
         uint32_t states[N];
 
         void refill();
@@ -31,29 +37,41 @@
 
     public:
 
-        void reset(uint32_t seed=0);
+        virtual void reset(
+            uint32_t seed = 0
+        );
 
-        RNG(uint32_t seed=0) { reset(seed); }
-        ~RNG()               {              } 
+        UniformRNG(
+            uint32_t seed = 0
+        )
+        {
+            reset(seed);
+        }
+
+        virtual ~UniformRNG()
+        {
+        } 
 
         uint32_t sample32()
         {
             return mersenneSample32();
         }
 
-        uint32_t stronger_sample32()
+        uint32_t strongSample32()
         {
-            uint32_t s = mersenneSample32();
-            return (s>>13) ^ mersenneSample32();
+            uint32_t s0 = mersenneSample32();
+            uint32_t s1 = mersenneSample32();
+            uint32_t s2 = mersenneSample32();
+            return (s0<<13) ^ (s1) ^ (s2>>13);
         }
 
         uint64_t sample64()
         {
             uint64_t s = sample32();
-            return (s<<32) + sample32();
+            return (s<<32) | sample32();
         }
 
-        double sample()
+        virtual double sample()
         {
             return sample64() * 0x1p-64;
         }
@@ -63,7 +81,94 @@
             double  max
         )
         {
-            return min + sample()*(max-min);
+            return min + sample()*(max - min);
+        }
+    };
+
+    // Normal distribution
+    struct GaussRNG: public RNG
+    {
+    private:
+        UniformRNG urng0;
+        UniformRNG urng1;
+        double stashedValue;
+        bool haveStashedValue;
+
+    public:
+
+        virtual void reset(
+            uint32_t seed = 0
+        )
+        {
+            urng0.reset(3475*seed + 0x123);
+            urng1.reset(7543*seed + 0x321);
+        }
+
+        GaussRNG(
+            uint32_t seed = 0
+        )
+            :   stashedValue(0.0),
+                haveStashedValue(false)
+        {
+            reset(seed);
+        }
+
+        virtual ~GaussRNG()
+        {
+        }
+
+        // Marsaglia polar method for the normal distribution
+        double sample()
+        {
+            if(haveStashedValue) {
+                haveStashedValue = false;
+                return stashedValue;
+            }
+
+            while(1) {
+                double x0  = 2.0*urng0.sample() - 1.0; 
+                double y0  = 2.0*urng1.sample() - 1.0;
+                double r2 = x0*x0 + y0*y0;
+                if(r2<=1.0) {
+                    double scaleFactor = ::sqrt(-2.0*log(r2)/r2);
+                    stashedValue = y0*scaleFactor;
+                    haveStashedValue = true;
+                    return x0*scaleFactor;
+                }
+            }
+        }
+    };
+
+    // Positive half of the normal distribution
+    struct HalfGaussRNG: public RNG
+    {
+    private:
+        GaussRNG gaussRNG;
+
+    public:
+
+        virtual void reset(
+            uint32_t seed = 0
+        )
+        {
+            gaussRNG.reset(seed);
+        }
+
+        HalfGaussRNG(
+            uint32_t seed = 0
+        )
+        {
+            reset(seed);
+        }
+
+        virtual ~HalfGaussRNG()
+        {
+        }
+
+        virtual double sample()
+        {
+            double x = gaussRNG.sample();
+            return fabs(x);
         }
     };
 
